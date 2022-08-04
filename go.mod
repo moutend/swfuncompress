@@ -1,1 +1,1 @@
-module swfuncompress
+module github.com/moutend/swfuncompress
