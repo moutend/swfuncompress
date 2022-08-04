@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 )
 
@@ -45,28 +46,38 @@ func run() error {
 	header := &bytes.Buffer{}
 
 	written, err := io.CopyN(header, input, 8)
+
 	if err != nil {
 		return err
 	}
 	if written != 8 {
 		return fmt.Errorf("something went wrong while parsing swf file header")
 	}
-	if string(header.Bytes()[:3]) == `FWS` {
+
+	signature := &bytes.Buffer{}
+
+	if _, err := io.CopyN(signature, header, 3); err != nil {
+		return err
+	}
+	if string(signature.Bytes()) == `FWS` {
 		return fmt.Errorf("%s is already uncompressed", *inputFileFlag)
 	}
-	if string(header.Bytes()[:3]) != `CWS` {
+	if string(signature.Bytes()) != `CWS` {
 		return fmt.Errorf("not a compressed swf file")
 	}
 
-	reader, err := zlib.NewReader(input)
+	content, err := zlib.NewReader(input)
 
 	if err != nil {
 		return err
 	}
 
-	defer reader.Close()
+	defer content.Close()
 
-	output, err := os.Create(*outputFileFlag)
+	temporaryOutputPath := filepath.Join(os.TempDir(), filepath.Base(*outputFileFlag))
+	actualOutputPath := *outputFileFlag
+
+	output, err := os.Create(temporaryOutputPath)
 
 	if err != nil {
 		return err
@@ -74,16 +85,20 @@ func run() error {
 
 	defer output.Close()
 
+	// The header variable contains 5 bytes, which consists of 1 byte for Macromedia Flash version and 4 bytes for file size.
 	uncompressedHeader := bytes.NewBuffer([]byte(`FWS`))
 
-	if _, err := io.Copy(uncompressedHeader, bytes.NewBuffer(header.Bytes()[3:])); err != nil {
-		return fmt.Errorf("failed to build header: %w")
+	if _, err := io.Copy(uncompressedHeader, header); err != nil {
+		return fmt.Errorf("failed to build uncompressed header: %w")
 	}
 	if _, err := io.Copy(output, uncompressedHeader); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
-	if _, err := io.Copy(output, reader); err != nil {
+	if _, err := io.Copy(output, content); err != nil {
 		return fmt.Errorf("failed to write content: %w", err)
+	}
+	if err := os.Rename(temporaryOutputPath, actualOutputPath); err != nil {
+		return err
 	}
 
 	return nil
