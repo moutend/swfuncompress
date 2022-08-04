@@ -83,7 +83,7 @@ func run() error {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
 	if _, err := io.Copy(output, reader); err != nil {
-		return fmt.Errorf("failed to write content: %w")
+		return fmt.Errorf("failed to write content: %w", err)
 	}
 
 	return nil
